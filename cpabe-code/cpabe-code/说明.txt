@@ -1,0 +1,5 @@
+编程语言：Go
+使用的版本：go1.12.4
+
+运行
+cpabe-code目录下运行 go run testabe.go
