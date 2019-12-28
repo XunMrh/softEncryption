@@ -1,11 +1,3 @@
-/*************************************************************************
-	> File Name: Client.c
-	> Author: SongLee
-	> E-mail: lisong.shine@qq.com 
-	> Created Time: 2014年03月14日 星期五 09时41分46秒
-    > Personal Blog: http://songlee24.github.io/
- ************************************************************************/
- 
 #include<netinet/in.h>   // sockaddr_in
 #include<sys/types.h>    // socket
 #include<sys/socket.h>   // socket
@@ -17,8 +9,13 @@
 #define BUFFER_SIZE 1024
 #define FILE_NAME_MAX_SIZE 512
  
-int main()
+int main(int argc, char *argv[])
 {
+	if(argc < 2) 
+    {
+	  fprintf(stderr,"Please enter the server's hostname!\n");
+	  exit(1);	
+    }
     // 声明并初始化一个客户端的socket地址结构
     struct sockaddr_in client_addr;
     bzero(&client_addr, sizeof(client_addr));
@@ -45,7 +42,7 @@ int main()
     struct sockaddr_in server_addr;
     bzero(&server_addr, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    if(inet_pton(AF_INET, "127.0.0.1", &server_addr.sin_addr) == 0)
+    if(inet_pton(AF_INET, argv[1], &server_addr.sin_addr) == 0)
     {
         perror("Server IP Address Error:");
         exit(1);
@@ -59,7 +56,6 @@ int main()
         perror("Can Not Connect To Server IP:");
         exit(0);
     }
- 
     // 输入文件名 并放到缓冲区buffer中等待发送
     char file_name[FILE_NAME_MAX_SIZE+1];
     bzero(file_name, FILE_NAME_MAX_SIZE+1);
@@ -76,32 +72,31 @@ int main()
         perror("Send File Name Failed:");
         exit(1);
     }
- 
-    // 打开文件，准备写入
-    FILE *fp = fopen(file_name, "w");
+    printf("发送文件名\n");
+    // 打开文件并读取文件数据
+    FILE *fp = fopen(file_name, "r");
     if(NULL == fp)
     {
-        printf("File:\t%s Can Not Open To Write\n", file_name);
-        exit(1);
+       printf("File:%s Not Found\n", file_name);
     }
- 
-    // 从服务器接收数据到buffer中
-    // 每接收一段数据，便将其写入文件中，循环直到文件接收完并写完为止
-    bzero(buffer, BUFFER_SIZE);
-    int length = 0;
-    while((length = recv(client_socket_fd, buffer, BUFFER_SIZE, 0)) > 0)
+    else
     {
-        if(fwrite(buffer, sizeof(char), length, fp) < length)
-        {
-            printf("File:\t%s Write Failed\n", file_name);
-            break;
-        }
         bzero(buffer, BUFFER_SIZE);
+        int length = 0;
+        // 每读取一段数据，便将其发送给客户端，循环直到文件读完为止
+        while((length = fread(buffer, sizeof(char), BUFFER_SIZE, fp)) > 0)
+        {
+            if(send(client_socket_fd, buffer, length, 0) < 0)
+            {
+                printf("Send File:%s Failed./n", file_name);
+                break;
+            }
+            bzero(buffer, BUFFER_SIZE);
+        } 
+        // 关闭文件
+        fclose(fp);
+        printf("File:%s Transfer Successful!\n", file_name);
     }
- 
-    // 接收成功后，关闭文件，关闭socket
-    printf("Receive File:\t%s From Server IP Successful!\n", file_name);
-    close(fp);
     close(client_socket_fd);
     return 0;
 }
