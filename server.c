@@ -1,68 +1,115 @@
-//server.c 服务端
-#include<stdio.h>
-#include<stdlib.h>
-#include<errno.h>
-#include<unistd.h>
-#include <string.h>
-#include <sys/types.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <sys/wait.h>
-#include <arpa/inet.h> 
-#define SERVPORT 3333
-#define BACKLOG 10
-int main()
-{	
-    int sockfd,client_fd;
-    int sin_size;
-    char s[50];
-    struct sockaddr_in my_addr;    
-    struct sockaddr_in remote_addr; 
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);//建立socket --
-    my_addr.sin_family=AF_INET;//AF_INET地址族
-    my_addr.sin_port=htons(SERVPORT);//设定端口号(host -> networks)
-    my_addr.sin_addr.s_addr = INADDR_ANY;//32位IPv4地址
-    bzero(&(my_addr.sin_zero),8); //置前8个字节为0
-    if (bind(sockfd, (struct sockaddr *)&my_addr, sizeof(struct sockaddr)) == -1) 
-     {
-  	  perror("bind 出错！");		
-	  exit(1);	
-     }
-    if (listen(sockfd, BACKLOG) == -1) //监听socket连接，设置队列中最多拥有连接个数为10  --
-     {	
-	  perror("listen 出错！");	
-        exit(1);     
-     }
-    while(1)
-     {
-	  sin_size = sizeof(struct sockaddr_in);//记录sockaddr_in结构体所占字节数
-	  if ((client_fd = accept(sockfd, (struct sockaddr *)&remote_addr, &sin_size)) == -1) //accept()缺省是阻塞函数，阻塞到有连接请求为止 --
-          {	
-	      perror("accept error");		
-	      continue;		
-	  }
-	  printf("收到一个连接来自： %s\n", inet_ntoa(remote_addr.sin_addr));
-	  if (!fork()) 
-          { 
-		if (send(client_fd, "连接上了 \n", 26, 0) == -1) //--		
-		    perror("send 出错！");	  
-		//receive a piece of message from host
-		int nbytes = recv(client_fd, s, 100, 0);
-		s[nbytes] = '\0';
-		if(s[0] == 'l' && s[1] == 'i' && s[2] == 'u' && nbytes == 3)
-		{
-		     //send the message "Bingo" to host
-		     send(client_fd, "Bingo\n" ,6, 0);
-		}
-		else
-		{
-		     //send the message "incorrect username" to host
-		     send(client_fd, "incorrect username\n", 26, 0);
-		}
-            close(client_fd);	
-            exit(0);		
-          }
-	  close(client_fd);
-     }
-} 
+/*************************************************************************
+	> File Name: Server.c
+	> Author: SongLee
+	> E-mail: lisong.shine@qq.com 
+	> Created Time: 2014年03月13日 星期四 22时17分43秒
+    > Personal Blog: http://songlee24.github.io/
+ ************************************************************************/
  
+#include<netinet/in.h>  // sockaddr_in
+#include<sys/types.h>   // socket
+#include<sys/socket.h>  // socket
+#include<stdio.h>       // printf
+#include<stdlib.h>      // exit
+#include<string.h>      // bzero
+ 
+#define SERVER_PORT 8000
+#define LENGTH_OF_LISTEN_QUEUE 20
+#define BUFFER_SIZE 1024
+#define FILE_NAME_MAX_SIZE 512
+ 
+int main(void)
+{
+    // 声明并初始化一个服务器端的socket地址结构
+    struct sockaddr_in server_addr;
+    bzero(&server_addr, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = htons(INADDR_ANY);
+    server_addr.sin_port = htons(SERVER_PORT);
+ 
+    // 创建socket，若成功，返回socket描述符
+    int server_socket_fd = socket(PF_INET, SOCK_STREAM, 0);
+    if(server_socket_fd < 0)
+    {
+        perror("Create Socket Failed:");
+        exit(1);
+    }
+    int opt = 1;
+    setsockopt(server_socket_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+ 
+    // 绑定socket和socket地址结构
+    if(-1 == (bind(server_socket_fd, (struct sockaddr*)&server_addr, sizeof(server_addr))))
+    {
+        perror("Server Bind Failed:");
+        exit(1);
+    }
+    
+    // socket监听
+    if(-1 == (listen(server_socket_fd, LENGTH_OF_LISTEN_QUEUE)))
+    {
+        perror("Server Listen Failed:");
+        exit(1);
+    }
+ 
+    while(1)
+    {
+        // 定义客户端的socket地址结构
+        struct sockaddr_in client_addr;
+        socklen_t client_addr_length = sizeof(client_addr);
+ 
+        // 接受连接请求，返回一个新的socket(描述符)，这个新socket用于同连接的客户端通信
+        // accept函数会把连接到的客户端信息写到client_addr中
+        int new_server_socket_fd = accept(server_socket_fd, (struct sockaddr*)&client_addr, &client_addr_length);
+        if(new_server_socket_fd < 0)
+        {
+            perror("Server Accept Failed:");
+            break;
+        }
+ 
+        // recv函数接收数据到缓冲区buffer中
+        char buffer[BUFFER_SIZE];
+        bzero(buffer, BUFFER_SIZE);
+        if(recv(new_server_socket_fd, buffer, BUFFER_SIZE, 0) < 0)
+        {
+            perror("Server Recieve Data Failed:");
+            break;
+        }
+ 
+        // 然后从buffer(缓冲区)拷贝到file_name中
+        char file_name[FILE_NAME_MAX_SIZE+1];
+        bzero(file_name, FILE_NAME_MAX_SIZE+1);
+        strncpy(file_name, buffer, strlen(buffer)>FILE_NAME_MAX_SIZE?FILE_NAME_MAX_SIZE:strlen(buffer));
+        printf("%s\n", file_name);
+ 
+        // 打开文件并读取文件数据
+        FILE *fp = fopen(file_name, "r");
+        if(NULL == fp)
+        {
+            printf("File:%s Not Found\n", file_name);
+        }
+        else
+        {
+            bzero(buffer, BUFFER_SIZE);
+            int length = 0;
+            // 每读取一段数据，便将其发送给客户端，循环直到文件读完为止
+            while((length = fread(buffer, sizeof(char), BUFFER_SIZE, fp)) > 0)
+            {
+                if(send(new_server_socket_fd, buffer, length, 0) < 0)
+                {
+                    printf("Send File:%s Failed./n", file_name);
+                    break;
+                }
+                bzero(buffer, BUFFER_SIZE);
+            }
+ 
+            // 关闭文件
+            fclose(fp);
+            printf("File:%s Transfer Successful!\n", file_name);
+        }
+        // 关闭与客户端的连接
+        close(new_server_socket_fd);
+    }
+    // 关闭监听用的socket
+    close(server_socket_fd);
+    return 0;
+}
